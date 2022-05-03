@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-import {ERC721Enumerable, ERC721} from "oz/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import {ERC721Enumerable, ERC721} from "lib/openzeppelin-contracts.git/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import {IWitnetRandomness} from "./IWIT.sol";
 import "../lib/base64.sol";
 pragma solidity 0.8.10;
@@ -12,6 +12,7 @@ contract NFTLIL is ERC721Enumerable {
     }
     mapping(uint => TokenDeets) TokenTags;
 
+
     struct Wrapper {
         string i;
         string j;
@@ -21,9 +22,9 @@ contract NFTLIL is ERC721Enumerable {
     }
     uint256 tokenID = 0;
     bytes32 public randomness;
+  //bytes32 latUsed;
     uint256 public latestRandomizingBlock;
     IWitnetRandomness public immutable witnet;
-    bytes32 lastUsed = bytes32(abi.encodePacked("first"));
 
     constructor(IWitnetRandomness _witnetRandomness)
         payable
@@ -31,9 +32,10 @@ contract NFTLIL is ERC721Enumerable {
     {
         assert(address(_witnetRandomness) != address(0));
         witnet = _witnetRandomness;
+        requestRandomness();
     }
 
-    function requestRandomness() public payable {
+    function requestRandomness() internal  {
         latestRandomizingBlock = block.number;
         uint _usedFunds = witnet.randomize{value: msg.value}();
         if (_usedFunds < msg.value) {
@@ -43,21 +45,17 @@ contract NFTLIL is ERC721Enumerable {
 
     string[4] availNames = ["King", "Warrior", "Knight", "Steed"];
 
-    function reqRand() external payable {
-        requestRandomness();
-    }
-
-    function mintNFT() external {
-        assert(randomness != 0);
+    function mintNFT() external payable {
         fetchRandomness();
-        // assert(randomness != lastUsed);
+        assert(randomness != 0);
         _mint(msg.sender, tokenID);
         TokenDeets storage s = TokenTags[tokenID];
         s.name = availNames[genName(randomness)];
         s.props = genProp(randomness);
         s.tag = genTag(randomness);
-        lastUsed = randomness;
+
         tokenID++;
+        requestRandomness();
     }
 
     function genProp(bytes32 _rand) internal returns (uint8[5] memory m) {
@@ -74,21 +72,21 @@ contract NFTLIL is ERC721Enumerable {
         torn = uint128(t >> 128);
     }
 
-    function genTag(bytes32 _rand) internal returns (bytes32 b) {
+    function genTag(bytes32 _rand) internal view returns (bytes32 b) {
         b = bytes32(_rand);
     }
 
-    function genName(bytes32 _rand) internal returns (uint8 pos) {
-        uint128 base2 = uint128(bytes16(_rand >> 128));
+    function genName(bytes32 _rand) internal view returns (uint8 pos) {
+        uint128 base2 = uint128(bytes16(_rand << 128));
         uint16 mid = uint16(uint128(base2));
         pos = uint8(mid % 4);
     }
 
     function genSingleProp(uint128 base, uint8 offset)
-        internal
+        internal view
         returns (uint8 sProp_)
     {
-        uint24 mid = uint24(base >> (offset | block.number));
+        uint128 mid = base >> (offset & block.number);
         sProp_ = uint8(mid % 200);
     }
 
@@ -175,7 +173,7 @@ contract NFTLIL is ERC721Enumerable {
         return output;
     }
 
-    function fetchRandomness() public {
+    function fetchRandomness() internal {
         assert(latestRandomizingBlock > 0);
         randomness = witnet.getRandomnessAfter(latestRandomizingBlock);
     }
